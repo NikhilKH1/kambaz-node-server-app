@@ -1,0 +1,52 @@
+import "dotenv/config";
+import session from "express-session";
+import express from 'express';
+import Hello from "./Hello.js"
+import Lab5 from "./Lab5/index.js";
+import cors from "cors";
+import db from "./Kambaz/Database/index.js";
+import UserRoutes from "./Kambaz/Users/routes.js";
+import CourseRoutes from "./Kambaz/Courses/routes.js";
+import AssignmentsRoutes from "./Kambaz/Assignments/routes.js";
+import ModulesRoutes from "./Kambaz/Modules/routes.js";
+import EnrollmentsRoutes from "./Kambaz/Enrollments/routes.js";
+const app = express();
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((o) => o.trim()).filter(Boolean)
+  : ["http://localhost:3000", "http://localhost:3006"];
+app.use(
+  cors({
+    credentials: true,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+  })
+);
+   const sessionOptions = {
+    secret: process.env.SESSION_SECRET || "kambaz",
+    resave: false,
+    saveUninitialized: false,
+  };
+  if (process.env.SERVER_ENV !== "development") {
+    sessionOptions.proxy = true;
+    sessionOptions.cookie = {
+      sameSite: "none",
+      secure: true,
+      domain: process.env.SERVER_URL,
+    };
+  }
+  app.use(session(sessionOptions));
+  
+app.use(express.json({ limit: "10mb" }));
+UserRoutes(app, db);
+CourseRoutes(app, db);
+AssignmentsRoutes(app, db);
+ModulesRoutes(app, db);
+EnrollmentsRoutes(app, db);
+Hello(app)
+Lab5(app);
+app.listen(process.env.PORT || 4000)
