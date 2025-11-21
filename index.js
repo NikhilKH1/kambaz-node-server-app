@@ -13,7 +13,7 @@ import EnrollmentsRoutes from "./Kambaz/Enrollments/routes.js";
 const app = express();
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(",").map((o) => o.trim()).filter(Boolean)
-  : ["http://localhost:3000", "http://localhost:3006"];
+  : ["http://localhost:3000", "http://localhost:3006", "https://kambaz-next-js-git-a5-nikhil-kundalli-harishs-projects.vercel.app"];
 app.use(
   cors({
     credentials: true,
