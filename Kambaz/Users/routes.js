@@ -2,8 +2,26 @@ import UsersDao from "./dao.js";
 import EnrollmentsDao from "../Enrollments/dao.js";
 
 export default function UserRoutes(app, db) {
-  const dao = UsersDao(db);
+  const dao = UsersDao();
   const enrollmentsDao = EnrollmentsDao(db);
+
+  const findAllUsers = async (req, res) => {
+    const { role, name } = req.query;
+    if (role) {
+      const users = await dao.findUsersByRole(role);
+      res.json(users);
+      return;
+    }
+
+    if (name) {
+      const users = await dao.findUsersByPartialName(name);
+      res.json(users);
+      return;
+    }
+
+    const users = await dao.findAllUsers();
+    res.json(users);
+  };
 
   const requireFaculty = (req, res, next) => {
     const currentUser = req.session["currentUser"];
@@ -14,65 +32,64 @@ export default function UserRoutes(app, db) {
     next();
   };
 
-  const createUser = (req, res) => {
-    const newUser = dao.createUser(req.body);
-    res.status(201).json(newUser);
-  };
-
-  const deleteUser = (req, res) => {
-    const deleted = dao.deleteUser(req.params.userId);
-    if (!deleted) {
-      res.sendStatus(404);
-      return;
-    }
-    enrollmentsDao.deleteEnrollmentsForUser(req.params.userId);
-    res.sendStatus(204);
-  };
-
-  const findAllUsers = (req, res) => {
-    res.json(dao.findAllUsers());
-  };
-
-  const findUserById = (req, res) => {
-    const user = dao.findUserById(req.params.userId);
-    if (!user) {
-      res.sendStatus(404);
-      return;
-    }
+  const createUser = async (req, res) => {
+    const user = await dao.createUser(req.body);
     res.json(user);
   };
 
-  const updateUserRecord = (userId, updates, req) => {
-    const updated = dao.updateUser(userId, updates);
+
+  const deleteUser = async (req, res) => {
+    const status = await dao.deleteUser(req.params.userId);
+    res.json(status);
+};
+
+
+  const findUserById = async (req, res) => {
+    try {
+      const user = await dao.findUserById(req.params.userId);
+      if (!user) {
+        res.sendStatus(404);
+        return;
+      }
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  };
+
+  const updateUserRecord = async (userId, updates, req) => {
+    const updated = await dao.updateUser(userId, updates);
     if (updated && req.session["currentUser"]?._id === userId) {
       req.session["currentUser"] = updated;
     }
     return updated;
   };
 
-  const updateUser = (req, res) => {
-    const updated = updateUserRecord(req.params.userId, req.body, req);
-    if (!updated) {
-      res.sendStatus(404);
-      return;
-    }
-    res.json(updated);
+  const updateUser = async (req, res) => {
+    const { userId } = req.params;
+    const userUpdates = req.body;
+    await dao.updateUser(userId, userUpdates);
+    const currentUser = req.session["currentUser"];
+   if (currentUser && currentUser._id === userId) {
+     req.session["currentUser"] = { ...currentUser, ...userUpdates };
+   }
+    res.json(currentUser);
   };
 
-  const signup = (req, res) => {
-    const user = dao.findUserByUsername(req.body.username);
+  const signup = async (req, res) => {
+    const user = await dao.findUserByUsername(req.body.username);
     if (user) {
       res.status(400).json({ message: "Username already in use" });
       return;
     }
-    const currentUser = dao.createUser(req.body);
+    const currentUser = await dao.createUser(req.body);
     req.session["currentUser"] = currentUser;
     res.json(currentUser);
   };
 
-  const signin = (req, res) => {
+  const signin = async(req, res) => {
     const { username, password } = req.body;
-    const currentUser = dao.findUserByCredentials(username, password);
+    const currentUser = await dao.findUserByCredentials(username, password);
     if (currentUser) {
       req.session["currentUser"] = currentUser;
       res.json(currentUser);
@@ -96,43 +113,58 @@ export default function UserRoutes(app, db) {
     res.json(currentUser);
   };
 
-  const findPeopleForCourse = (req, res) => {
-    const { courseId } = req.params;
-    const enrolledIds = (db.enrollments || [])
-      .filter((enrollment) => enrollment.course === courseId)
-      .map((enrollment) => enrollment.user);
-    const people = dao
-      .findAllUsers()
-      .filter((user) => enrolledIds.includes(user._id));
-    res.json(people);
-  };
-
-  const createUserForCourse = (req, res) => {
-    const newUser = dao.createUser(req.body);
-    enrollmentsDao.enrollUserInCourse(newUser._id, req.params.courseId);
-    res.status(201).json(newUser);
-  };
-
-  const updateUserForCourse = (req, res) => {
-    const updated = updateUserRecord(req.params.userId, req.body, req);
-    if (!updated) {
-      res.sendStatus(404);
-      return;
+  const findPeopleForCourse = async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const enrolledIds = (db.enrollments || [])
+        .filter((enrollment) => enrollment.course === courseId)
+        .map((enrollment) => enrollment.user);
+      const allUsers = await dao.findAllUsers();
+      const people = allUsers.filter((user) => enrolledIds.includes(user._id));
+      res.json(people);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
     }
-    res.json(updated);
   };
 
-  const deleteUserFromCourse = (req, res) => {
-    const deleted = dao.deleteUser(req.params.userId);
-    if (!deleted) {
-      res.sendStatus(404);
-      return;
+  const createUserForCourse = async (req, res) => {
+    try {
+      const newUser = await dao.createUser(req.body);
+      enrollmentsDao.enrollUserInCourse(newUser._id, req.params.courseId);
+      res.status(201).json(newUser);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
     }
-    enrollmentsDao.unenrollUserInCourse(
-      req.params.userId,
-      req.params.courseId
-    );
-    res.sendStatus(204);
+  };
+
+  const updateUserForCourse = async (req, res) => {
+    try {
+      const updated = await updateUserRecord(req.params.userId, req.body, req);
+      if (!updated) {
+        res.sendStatus(404);
+        return;
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  };
+
+  const deleteUserFromCourse = async (req, res) => {
+    try {
+      const deleted = await dao.deleteUser(req.params.userId);
+      if (!deleted) {
+        res.sendStatus(404);
+        return;
+      }
+      enrollmentsDao.unenrollUserInCourse(
+        req.params.userId,
+        req.params.courseId
+      );
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
   };
 
   app.post("/api/users", requireFaculty, createUser);

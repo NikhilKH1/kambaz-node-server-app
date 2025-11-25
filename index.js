@@ -14,16 +14,15 @@ const app = express();
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(",").map((o) => o.trim()).filter(Boolean)
   : ["http://localhost:3000", "http://localhost:3006", "https://kambaz-next-js-git-a5-nikhil-kundalli-harishs-projects.vercel.app"];
+
+console.log("Allowed origins:", allowedOrigins);
+
 app.use(
   cors({
     credentials: true,
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
    const sessionOptions = {
@@ -49,4 +48,22 @@ ModulesRoutes(app, db);
 EnrollmentsRoutes(app, db);
 Hello(app)
 Lab5(app);
-app.listen(process.env.PORT || 4000)
+
+// Error handling middleware - must be after all routes
+app.use((err, req, res, next) => {
+  console.error("Error:", err);
+  // Ensure CORS headers are set even on errors
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+  res.status(err.status || 500).json({
+    message: err.message || "Internal Server Error",
+    error: process.env.NODE_ENV === "development" ? err.stack : undefined,
+  });
+});
+
+app.listen(process.env.PORT || 4000, () => {
+  console.log(`Server running on port ${process.env.PORT || 4000}`);
+})
