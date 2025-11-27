@@ -1,6 +1,7 @@
 import "dotenv/config";
 import session from "express-session";
 import express from 'express';
+import mongoose from "mongoose";
 import Hello from "./Hello.js"
 import Lab5 from "./Lab5/index.js";
 import cors from "cors";
@@ -11,18 +12,31 @@ import AssignmentsRoutes from "./Kambaz/Assignments/routes.js";
 import ModulesRoutes from "./Kambaz/Modules/routes.js";
 import EnrollmentsRoutes from "./Kambaz/Enrollments/routes.js";
 const app = express();
+
+const CONNECTION_STRING = "mongodb://127.0.0.1:27017/kambaz";
+mongoose.connect(CONNECTION_STRING);
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(",").map((o) => o.trim()).filter(Boolean)
-  : ["http://localhost:3000", "http://localhost:3006", "https://kambaz-next-js-git-a5-nikhil-kundalli-harishs-projects.vercel.app"];
-
-console.log("Allowed origins:", allowedOrigins);
-
+  : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3006", "http://localhost:3008", "https://kambaz-next-js-git-a5-nikhil-kundalli-harishs-projects.vercel.app"];
 app.use(
   cors({
     credentials: true,
-    origin: allowedOrigins,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+      // In development, allow all localhost origins
+      if (process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost:")) {
+        return callback(null, true);
+      }
+      // Check if origin is in allowed list
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
   })
 );
    const sessionOptions = {
@@ -48,22 +62,4 @@ ModulesRoutes(app, db);
 EnrollmentsRoutes(app, db);
 Hello(app)
 Lab5(app);
-
-// Error handling middleware - must be after all routes
-app.use((err, req, res, next) => {
-  console.error("Error:", err);
-  // Ensure CORS headers are set even on errors
-  const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  }
-  res.status(err.status || 500).json({
-    message: err.message || "Internal Server Error",
-    error: process.env.NODE_ENV === "development" ? err.stack : undefined,
-  });
-});
-
-app.listen(process.env.PORT || 4000, () => {
-  console.log(`Server running on port ${process.env.PORT || 4000}`);
-})
+app.listen(process.env.PORT || 4000)

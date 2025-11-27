@@ -32,16 +32,42 @@ export default function UserRoutes(app, db) {
     next();
   };
 
+  const requireFacultyOrAdmin = (req, res, next) => {
+    const currentUser = req.session["currentUser"];
+    if (!currentUser) {
+      res.sendStatus(403);
+      return;
+    }
+    const role = (currentUser.role || "").toUpperCase();
+    if (role !== "FACULTY" && role !== "ADMIN") {
+      res.sendStatus(403);
+      return;
+    }
+    next();
+  };
+
   const createUser = async (req, res) => {
-    const user = await dao.createUser(req.body);
-    res.json(user);
+    try {
+      const user = await dao.createUser(req.body);
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
   };
 
 
   const deleteUser = async (req, res) => {
-    const status = await dao.deleteUser(req.params.userId);
-    res.json(status);
-};
+    try {
+      const deleted = await dao.deleteUser(req.params.userId);
+      if (!deleted) {
+        res.sendStatus(404);
+        return;
+      }
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  };
 
 
   const findUserById = async (req, res) => {
@@ -66,14 +92,22 @@ export default function UserRoutes(app, db) {
   };
 
   const updateUser = async (req, res) => {
-    const { userId } = req.params;
-    const userUpdates = req.body;
-    await dao.updateUser(userId, userUpdates);
-    const currentUser = req.session["currentUser"];
-   if (currentUser && currentUser._id === userId) {
-     req.session["currentUser"] = { ...currentUser, ...userUpdates };
-   }
-    res.json(currentUser);
+    try {
+      const { userId } = req.params;
+      const userUpdates = req.body;
+      const updatedUser = await dao.updateUser(userId, userUpdates);
+      if (!updatedUser) {
+        res.sendStatus(404);
+        return;
+      }
+      const currentUser = req.session["currentUser"];
+      if (currentUser && currentUser._id === userId) {
+        req.session["currentUser"] = updatedUser;
+      }
+      res.json(updatedUser);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
   };
 
   const signup = async (req, res) => {
@@ -167,11 +201,11 @@ export default function UserRoutes(app, db) {
     }
   };
 
-  app.post("/api/users", requireFaculty, createUser);
-  app.get("/api/users", requireFaculty, findAllUsers);
-  app.get("/api/users/:userId", requireFaculty, findUserById);
+  app.post("/api/users", requireFacultyOrAdmin, createUser);
+  app.get("/api/users", requireFacultyOrAdmin, findAllUsers);
+  app.get("/api/users/:userId", requireFacultyOrAdmin, findUserById);
   app.put("/api/users/:userId", updateUser);
-  app.delete("/api/users/:userId", requireFaculty, deleteUser);
+  app.delete("/api/users/:userId", requireFacultyOrAdmin, deleteUser);
   app.post("/api/users/signup", signup);
   app.post("/api/users/signin", signin);
   app.post("/api/users/signout", signout);
