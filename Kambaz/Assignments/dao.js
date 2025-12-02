@@ -1,40 +1,37 @@
 import { v4 as uuidv4 } from "uuid";
+import model from "./model.js";
 
-export default function AssignmentsDao(db) {
-  const withAssignments = () => db.assignments || [];
+export default function AssignmentsDao() {
+  const findAssignmentsForCourse = async (courseId) => {
+    const assignments = await model.find({ course: courseId });
+    return assignments.map((a) => a.toObject());
+  };
 
-  const findAssignmentsForCourse = (courseId) =>
-    withAssignments().filter((assignment) => assignment.course === courseId);
+  const findAssignmentById = async (assignmentId) => {
+    const assignment = await model.findById(assignmentId);
+    return assignment ? assignment.toObject() : null;
+  };
 
-  const findAssignmentById = (assignmentId) =>
-    withAssignments().find((assignment) => assignment._id === assignmentId);
-
-  const createAssignment = (courseId, assignment) => {
+  const createAssignment = async (courseId, assignment) => {
     const newAssignment = {
       _id: uuidv4(),
       course: courseId,
       availLabel: "Multiple Modules",
       ...assignment,
     };
-    db.assignments = [...withAssignments(), newAssignment];
-    return newAssignment;
+    const created = await model.create(newAssignment);
+    return created.toObject();
   };
 
-  const updateAssignment = (assignmentId, assignmentUpdates) => {
-    const assignment = findAssignmentById(assignmentId);
-    if (!assignment) {
-      return null;
-    }
-    Object.assign(assignment, assignmentUpdates);
-    return assignment;
+  const updateAssignment = async (assignmentId, assignmentUpdates) => {
+    await model.updateOne({ _id: assignmentId }, { $set: assignmentUpdates });
+    const updated = await model.findById(assignmentId);
+    return updated ? updated.toObject() : null;
   };
 
-  const deleteAssignment = (assignmentId) => {
-    const before = withAssignments().length;
-    db.assignments = withAssignments().filter(
-      (assignment) => assignment._id !== assignmentId
-    );
-    return before !== db.assignments.length;
+  const deleteAssignment = async (assignmentId) => {
+    const result = await model.deleteOne({ _id: assignmentId });
+    return result.deletedCount > 0;
   };
 
   return {

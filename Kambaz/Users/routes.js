@@ -150,12 +150,8 @@ export default function UserRoutes(app, db) {
   const findPeopleForCourse = async (req, res) => {
     try {
       const { courseId } = req.params;
-      const enrolledIds = (db.enrollments || [])
-        .filter((enrollment) => enrollment.course === courseId)
-        .map((enrollment) => enrollment.user);
-      const allUsers = await dao.findAllUsers();
-      const people = allUsers.filter((user) => enrolledIds.includes(user._id));
-      res.json(people);
+      const users = await enrollmentsDao.findUsersForCourse(courseId);
+      res.json(users);
     } catch (error) {
       res.status(500).json({ message: error.message });
     }
