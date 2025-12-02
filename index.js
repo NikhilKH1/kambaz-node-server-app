@@ -43,12 +43,15 @@ app.use(
       }
       // In production, allow all Vercel preview URLs
       if (process.env.NODE_ENV === "production" && origin.includes(".vercel.app")) {
+        console.log("CORS: Allowing Vercel origin:", origin);
         return callback(null, true);
       }
       // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
+        console.log("CORS: Allowing origin from allowed list:", origin);
         callback(null, true);
       } else {
+        console.log("CORS: Rejecting origin:", origin, "Allowed origins:", allowedOrigins);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -86,6 +89,21 @@ if (process.env.NODE_ENV === "production" || process.env.SERVER_ENV !== "develop
 app.use(session(sessionOptions));
   
 app.use(express.json({ limit: "10mb" }));
+
+// Frontend-Backend connection test endpoint
+app.get("/api/test-connection", (req, res) => {
+  const origin = req.headers.origin;
+  res.json({
+    status: "ok",
+    message: "Backend is reachable",
+    origin: origin || "no origin",
+    timestamp: new Date().toISOString(),
+    corsHeaders: {
+      "Access-Control-Allow-Origin": res.getHeader("Access-Control-Allow-Origin") || "not set",
+      "Access-Control-Allow-Credentials": res.getHeader("Access-Control-Allow-Credentials") || "not set"
+    }
+  });
+});
 
 // Database connection test endpoint
 app.get("/api/test-db", async (req, res) => {
