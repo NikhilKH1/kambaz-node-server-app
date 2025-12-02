@@ -112,12 +112,32 @@ export default function UserRoutes(app, db) {
 
   const signup = async (req, res) => {
     try {
-      const user = await dao.findUserByUsername(req.body.username);
+      // Trim whitespace from inputs
+      const trimmedUsername = (req.body.username || "").trim();
+      const trimmedPassword = (req.body.password || "").trim();
+      
+      if (!trimmedUsername || !trimmedPassword) {
+        res.status(400).json({ message: "Username and password are required" });
+        return;
+      }
+      
+      const user = await dao.findUserByUsername(trimmedUsername);
       if (user) {
         res.status(400).json({ message: "Username already in use" });
         return;
       }
-      const currentUser = await dao.createUser(req.body);
+      
+      // Create user with trimmed values
+      const userData = {
+        ...req.body,
+        username: trimmedUsername,
+        password: trimmedPassword
+      };
+      
+      console.log("Signup - Creating user:", trimmedUsername);
+      const currentUser = await dao.createUser(userData);
+      console.log("Signup - User created:", currentUser.username, "ID:", currentUser._id);
+      
       req.session["currentUser"] = currentUser;
       // Explicitly save session to ensure it's persisted
       req.session.save((err) => {
@@ -143,8 +163,16 @@ export default function UserRoutes(app, db) {
         return;
       }
       
-      const currentUser = await dao.findUserByCredentials(username, password);
+      // Trim whitespace from inputs
+      const trimmedUsername = username.trim();
+      const trimmedPassword = password.trim();
+      
+      console.log("Signin attempt - Username:", trimmedUsername, "Password length:", trimmedPassword.length);
+      
+      const currentUser = await dao.findUserByCredentials(trimmedUsername, trimmedPassword);
+      
       if (currentUser) {
+        console.log("User found:", currentUser.username, "Role:", currentUser.role);
         req.session["currentUser"] = currentUser;
         // Explicitly save session to ensure it's persisted
         req.session.save((err) => {
@@ -153,9 +181,18 @@ export default function UserRoutes(app, db) {
             res.status(500).json({ message: "Failed to create session" });
             return;
           }
+          console.log("Signin successful for:", currentUser.username);
           res.json(currentUser);
         });
       } else {
+        // Check if username exists at all
+        const userExists = await dao.findUserByUsername(trimmedUsername);
+        console.log("Signin failed - Username exists:", !!userExists);
+        if (userExists) {
+          console.log("Password mismatch for user:", trimmedUsername);
+        } else {
+          console.log("Username not found:", trimmedUsername);
+        }
         res.status(401).json({ message: "Invalid username or password" });
       }
     } catch (error) {
@@ -228,6 +265,25 @@ export default function UserRoutes(app, db) {
       res.status(500).json({ message: error.message });
     }
   };
+
+  // Debug endpoint to check users (remove in production)
+  app.get("/api/users/debug/list", async (req, res) => {
+    try {
+      const users = await dao.findAllUsers();
+      // Return usernames and password lengths (not actual passwords) for debugging
+      const safeUsers = users.map(u => ({
+        _id: u._id,
+        username: u.username,
+        passwordLength: u.password ? u.password.length : 0,
+        role: u.role,
+        firstName: u.firstName,
+        lastName: u.lastName
+      }));
+      res.json({ count: users.length, users: safeUsers });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  });
 
   app.post("/api/users", requireFacultyOrAdmin, createUser);
   app.get("/api/users", requireFacultyOrAdmin, findAllUsers);

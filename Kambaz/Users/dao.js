@@ -27,12 +27,19 @@ export default function UsersDao() {
 
 
   const findUserByUsername = async (username) => {
-    const user = await model.findOne({ username: username });
+    // Case-insensitive username search
+    const user = await model.findOne({ 
+      username: { $regex: new RegExp(`^${username}$`, "i") } 
+    });
     return user ? user.toObject() : null;
   };
 
   const findUserByCredentials = async (username, password) => {
-    const user = await model.findOne({ username, password });
+    // Case-insensitive username, exact password match
+    const user = await model.findOne({ 
+      username: { $regex: new RegExp(`^${username}$`, "i") },
+      password: password 
+    });
     return user ? user.toObject() : null;
   };
 
