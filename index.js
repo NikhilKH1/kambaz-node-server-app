@@ -21,6 +21,9 @@ mongoose.connect(CONNECTION_STRING)
   .catch((error) => {
     console.error("MongoDB connection error:", error);
   });
+// Trust proxy - MUST be set BEFORE session middleware (important for Render.com)
+app.set("trust proxy", 1);
+
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(",").map((o) => o.trim()).filter(Boolean)
   : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3006", "http://localhost:3008", "https://kambaz-next-js-git-a5-nikhil-kundalli-harishs-projects.vercel.app", "https://kambaz-next-js-git-a6-nikhil-kundalli-harishs-projects.vercel.app"];
@@ -67,21 +70,21 @@ if (process.env.NODE_ENV === "production" || process.env.SERVER_ENV !== "develop
     httpOnly: true, // Security: prevent JavaScript access
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     // Don't set domain - let browser handle it for cross-domain
+    path: "/", // Ensure cookie is available for all paths
   };
+  sessionOptions.resave = true; // Force save session even if not modified (for Render)
 } else {
   // Development: less strict settings
   sessionOptions.cookie = {
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000,
+    path: "/",
   };
 }
 
 app.use(session(sessionOptions));
   
 app.use(express.json({ limit: "10mb" }));
-
-// Trust proxy - important for Render.com
-app.set("trust proxy", 1);
 
 UserRoutes(app, db);
 CourseRoutes(app, db);

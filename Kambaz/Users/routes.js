@@ -111,24 +111,56 @@ export default function UserRoutes(app, db) {
   };
 
   const signup = async (req, res) => {
-    const user = await dao.findUserByUsername(req.body.username);
-    if (user) {
-      res.status(400).json({ message: "Username already in use" });
-      return;
+    try {
+      const user = await dao.findUserByUsername(req.body.username);
+      if (user) {
+        res.status(400).json({ message: "Username already in use" });
+        return;
+      }
+      const currentUser = await dao.createUser(req.body);
+      req.session["currentUser"] = currentUser;
+      // Explicitly save session to ensure it's persisted
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          res.status(500).json({ message: "Failed to create session" });
+          return;
+        }
+        res.json(currentUser);
+      });
+    } catch (error) {
+      console.error("Signup error:", error);
+      res.status(500).json({ message: error.message || "Unable to sign up. Try again later." });
     }
-    const currentUser = await dao.createUser(req.body);
-    req.session["currentUser"] = currentUser;
-    res.json(currentUser);
   };
 
   const signin = async(req, res) => {
-    const { username, password } = req.body;
-    const currentUser = await dao.findUserByCredentials(username, password);
-    if (currentUser) {
-      req.session["currentUser"] = currentUser;
-      res.json(currentUser);
-    } else {
-      res.status(401).json({ message: "Unable to login. Try again later." });
+    try {
+      const { username, password } = req.body;
+      
+      if (!username || !password) {
+        res.status(400).json({ message: "Username and password are required" });
+        return;
+      }
+      
+      const currentUser = await dao.findUserByCredentials(username, password);
+      if (currentUser) {
+        req.session["currentUser"] = currentUser;
+        // Explicitly save session to ensure it's persisted
+        req.session.save((err) => {
+          if (err) {
+            console.error("Session save error:", err);
+            res.status(500).json({ message: "Failed to create session" });
+            return;
+          }
+          res.json(currentUser);
+        });
+      } else {
+        res.status(401).json({ message: "Invalid username or password" });
+      }
+    } catch (error) {
+      console.error("Signin error:", error);
+      res.status(500).json({ message: error.message || "Unable to login. Try again later." });
     }
   };
 
