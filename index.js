@@ -11,6 +11,7 @@ import CourseRoutes from "./Kambaz/Courses/routes.js";
 import AssignmentsRoutes from "./Kambaz/Assignments/routes.js";
 import ModulesRoutes from "./Kambaz/Modules/routes.js";
 import EnrollmentsRoutes from "./Kambaz/Enrollments/routes.js";
+import UserModel from "./Kambaz/Users/model.js";
 const app = express();
 
 const CONNECTION_STRING = process.env.DATABASE_CONNECTION_STRING || "mongodb://127.0.0.1:27017/kambaz";
@@ -85,6 +86,44 @@ if (process.env.NODE_ENV === "production" || process.env.SERVER_ENV !== "develop
 app.use(session(sessionOptions));
   
 app.use(express.json({ limit: "10mb" }));
+
+// Database connection test endpoint
+app.get("/api/test-db", async (req, res) => {
+  try {
+    const connectionState = mongoose.connection.readyState;
+    const states = {
+      0: "disconnected",
+      1: "connected",
+      2: "connecting",
+      3: "disconnecting"
+    };
+    
+    const dbStatus = states[connectionState] || "unknown";
+    
+    // Try to query the database
+    let userCount = 0;
+    let queryError = null;
+    try {
+      userCount = await UserModel.countDocuments();
+    } catch (err) {
+      queryError = err.message;
+    }
+    
+    res.json({
+      connectionStatus: dbStatus,
+      connectionState: connectionState,
+      userCount: userCount,
+      queryError: queryError,
+      connectionString: process.env.DATABASE_CONNECTION_STRING ? "Set (hidden)" : "Not set - using default",
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error.message,
+      connectionState: mongoose.connection.readyState
+    });
+  }
+});
 
 UserRoutes(app, db);
 CourseRoutes(app, db);
