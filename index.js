@@ -24,6 +24,7 @@ mongoose.connect(CONNECTION_STRING)
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(",").map((o) => o.trim()).filter(Boolean)
   : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3006", "http://localhost:3008", "https://kambaz-next-js-git-a5-nikhil-kundalli-harishs-projects.vercel.app", "https://kambaz-next-js-git-a6-nikhil-kundalli-harishs-projects.vercel.app"];
+
 app.use(
   cors({
     credentials: true,
@@ -36,6 +37,10 @@ app.use(
       if (process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost:")) {
         return callback(null, true);
       }
+      // In production, allow all Vercel preview URLs
+      if (process.env.NODE_ENV === "production" && origin.includes(".vercel.app")) {
+        return callback(null, true);
+      }
       // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
@@ -45,22 +50,39 @@ app.use(
     },
   })
 );
-   const sessionOptions = {
-    secret: process.env.SESSION_SECRET || "kambaz",
-    resave: false,
-    saveUninitialized: false,
+
+const sessionOptions = {
+  secret: process.env.SESSION_SECRET || "kambaz",
+  resave: false,
+  saveUninitialized: false,
+  name: "kambaz.sid", // Custom session name
+};
+
+// Production session configuration for cross-domain cookies
+if (process.env.NODE_ENV === "production" || process.env.SERVER_ENV !== "development") {
+  sessionOptions.proxy = true; // Trust proxy (important for Render)
+  sessionOptions.cookie = {
+    sameSite: "none", // Required for cross-domain cookies
+    secure: true, // Required for HTTPS
+    httpOnly: true, // Security: prevent JavaScript access
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    // Don't set domain - let browser handle it for cross-domain
   };
-  if (process.env.SERVER_ENV !== "development") {
-    sessionOptions.proxy = true;
-    sessionOptions.cookie = {
-      sameSite: "none",
-      secure: true,
-      domain: process.env.SERVER_URL,
-    };
-  }
-  app.use(session(sessionOptions));
+} else {
+  // Development: less strict settings
+  sessionOptions.cookie = {
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+  };
+}
+
+app.use(session(sessionOptions));
   
 app.use(express.json({ limit: "10mb" }));
+
+// Trust proxy - important for Render.com
+app.set("trust proxy", 1);
+
 UserRoutes(app, db);
 CourseRoutes(app, db);
 AssignmentsRoutes(app, db);
@@ -68,4 +90,27 @@ ModulesRoutes(app, db);
 EnrollmentsRoutes(app, db);
 Hello(app)
 Lab5(app);
+
+// Error handling middleware - ensure CORS headers are set even on errors
+app.use((err, req, res, next) => {
+  // Set CORS headers
+  const origin = req.headers.origin;
+  if (origin) {
+    const isAllowed = 
+      process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost:") ||
+      process.env.NODE_ENV === "production" && origin.includes(".vercel.app") ||
+      allowedOrigins.includes(origin);
+    
+    if (isAllowed) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+  }
+  
+  console.error("Error:", err);
+  res.status(err.status || 500).json({ 
+    message: err.message || "Internal server error" 
+  });
+});
+
 app.listen(process.env.PORT || 4000)

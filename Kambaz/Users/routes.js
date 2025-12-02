@@ -141,7 +141,7 @@ export default function UserRoutes(app, db) {
   const profile = (req, res) => {
     const currentUser = req.session["currentUser"];
     if (!currentUser) {
-      res.sendStatus(401);
+      res.status(401).json({ message: "Not authenticated" });
       return;
     }
     res.json(currentUser);
