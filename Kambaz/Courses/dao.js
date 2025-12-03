@@ -4,8 +4,34 @@ import EnrollmentsModel from "../Enrollments/model.js";
 
 export default function CoursesDao() {
   const findAllCourses = async () => {
-    const courses = await model.find();
-    return courses.map((c) => c.toObject());
+    try {
+      // Get raw count from MongoDB
+      const count = await model.countDocuments({});
+      console.log("Total courses in collection (countDocuments):", count);
+      
+      // Get all courses with lean() for better performance
+      const courses = await model.find({}).lean();
+      console.log("Courses found (find):", courses.length);
+      
+      // Log sample of _id types
+      if (courses.length > 0) {
+        console.log("Sample course _id types:", courses.slice(0, 3).map(c => ({
+          _id: c._id,
+          _idType: typeof c._id,
+          name: c.name
+        })));
+      }
+      
+      // Check if there's a discrepancy
+      if (count !== courses.length) {
+        console.warn(`⚠️ WARNING: Count mismatch! countDocuments: ${count}, find().length: ${courses.length}`);
+      }
+      
+      return courses; // Already plain objects from lean()
+    } catch (error) {
+      console.error("Error in findAllCourses:", error);
+      throw error;
+    }
   };
 
   const findCoursesForEnrolledUser = async (userId) => {

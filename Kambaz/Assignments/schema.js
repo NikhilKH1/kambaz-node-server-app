@@ -9,7 +9,11 @@ const assignmentSchema = new mongoose.Schema({
   availRest: String,
   due: String,
   points: Number,
-}, { collection: "assignments" });
+}, { 
+  collection: "assignments",
+  strict: false, // Allow fields not in schema (for old assignments that might have extra fields)
+  versionKey: false // Disable __v field
+});
 
 export default assignmentSchema;
 

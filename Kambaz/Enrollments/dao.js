@@ -52,35 +52,69 @@ import model from "./model.js";
 
 export default function EnrollmentsDao() {
   const findCoursesForUser = async (userId) => {
-    const enrollments = await model.find({ user: userId }).populate("course");
-    return enrollments.map((enrollment) => enrollment.course.toObject());
+    try {
+      // populate doesn't work well with lean(), so we'll populate first then convert
+      const enrollments = await model.find({ user: userId }).populate("course");
+      return enrollments
+        .filter((enrollment) => enrollment.course) // Filter out null courses
+        .map((enrollment) => enrollment.course.toObject()); // Convert to plain objects
+    } catch (error) {
+      console.error("Error in findCoursesForUser:", error);
+      throw error;
+    }
   };
 
   const findUsersForCourse = async (courseId) => {
-    const enrollments = await model.find({ course: courseId }).populate("user");
-    return enrollments
-      .filter((enrollment) => enrollment.user) // Filter out null users
-      .map((enrollment) => enrollment.user.toObject());
+    try {
+      const count = await model.countDocuments({ course: courseId });
+      console.log(`Total enrollments for course ${courseId} (countDocuments):`, count);
+      
+      // populate doesn't work well with lean(), so we'll populate first then convert
+      const enrollments = await model.find({ course: courseId }).populate("user");
+      console.log(`Enrollments found for course ${courseId} (find):`, enrollments.length);
+      
+      return enrollments
+        .filter((enrollment) => enrollment.user) // Filter out null users
+        .map((enrollment) => enrollment.user.toObject()); // Convert to plain objects
+    } catch (error) {
+      console.error("Error in findUsersForCourse:", error);
+      throw error;
+    }
   };
 
   const findEnrollmentsForUser = async (userId) => {
-    const enrollments = await model.find({ user: userId });
-    return enrollments.map((e) => e.toObject());
+    try {
+      const count = await model.countDocuments({ user: userId });
+      console.log(`Total enrollments for user ${userId} (countDocuments):`, count);
+      
+      const enrollments = await model.find({ user: userId }).lean();
+      console.log(`Enrollments found for user ${userId} (find):`, enrollments.length);
+      
+      return enrollments; // Already plain objects from lean()
+    } catch (error) {
+      console.error("Error in findEnrollmentsForUser:", error);
+      throw error;
+    }
   };
 
   const enrollUserInCourse = async (userId, courseId) => {
-    const existing = await model.findOne({ user: userId, course: courseId });
-    if (existing) {
-      return existing.toObject();
+    try {
+      const existing = await model.findOne({ user: userId, course: courseId }).lean();
+      if (existing) {
+        return existing; // Already plain object from lean()
+      }
+      const enrollment = await model.create({
+        _id: uuidv4(),
+        user: userId,
+        course: courseId,
+        status: "ENROLLED",
+        enrollmentDate: new Date(),
+      });
+      return enrollment.toObject();
+    } catch (error) {
+      console.error("Error in enrollUserInCourse:", error);
+      throw error;
     }
-    const enrollment = await model.create({
-      _id: uuidv4(),
-      user: userId,
-      course: courseId,
-      status: "ENROLLED",
-      enrollmentDate: new Date(),
-    });
-    return enrollment.toObject();
   };
 
   const unenrollUserFromCourse = async (userId, courseId) => {

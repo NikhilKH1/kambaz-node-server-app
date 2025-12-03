@@ -13,6 +13,10 @@ const enrollmentSchema = new mongoose.Schema(
      default: "ENROLLED",
    },
  },
- { collection: "enrollments" }
+ { 
+   collection: "enrollments",
+   strict: false, // Allow fields not in schema (for old enrollments that might have extra fields)
+   versionKey: false // Disable __v field
+ }
 );
 export default enrollmentSchema;

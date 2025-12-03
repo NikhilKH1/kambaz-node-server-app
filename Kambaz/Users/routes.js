@@ -452,7 +452,7 @@ export default function UserRoutes(app, db) {
       res.status(500).json({ message: error.message, stack: error.stack });
     }
   });
-
+  
   // Debug endpoint to test specific username lookup
   app.get("/api/users/debug/test/:username", async (req, res) => {
     try {

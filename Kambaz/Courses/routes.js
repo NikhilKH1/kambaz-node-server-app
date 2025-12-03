@@ -1,8 +1,60 @@
 import CoursesDao from "./dao.js";
 import EnrollmentsDao from "../Enrollments/dao.js";
+import CourseModel from "./model.js";
 export default function CourseRoutes(app, db) {
   const dao = CoursesDao();
   const enrollmentsDao = EnrollmentsDao();
+  
+  // Debug endpoint for courses
+  app.get("/api/courses/debug/list", async (req, res) => {
+    try {
+      const mongooseDb = CourseModel.db;
+      const dbName = mongooseDb?.databaseName;
+      const collectionName = CourseModel.collection.name;
+      
+      // Direct MongoDB query
+      const directCount = await CourseModel.countDocuments({});
+      const directCourses = await CourseModel.find({}).limit(20).lean();
+      
+      // Raw MongoDB collection query
+      const rawCollection = mongooseDb?.collection("courses");
+      let rawCount = 0;
+      let rawCourses = [];
+      if (rawCollection) {
+        rawCount = await rawCollection.countDocuments({});
+        rawCourses = await rawCollection.find({}).limit(20).toArray();
+      }
+      
+      const courses = await dao.findAllCourses();
+      
+      res.json({
+        database: dbName,
+        collection: collectionName,
+        daoCount: courses.length,
+        directMongoCount: directCount,
+        directMongoFindCount: directCourses.length,
+        rawCollectionCount: rawCount,
+        rawCollectionFindCount: rawCourses.length,
+        courses: courses.map(c => ({
+          _id: c._id,
+          _idType: typeof c._id,
+          name: c.name,
+          number: c.number,
+          credits: c.credits
+        })),
+        rawCourses: rawCourses.map(c => ({
+          _id: c._id,
+          _idType: typeof c._id,
+          name: c.name,
+          number: c.number,
+          credits: c.credits
+        }))
+      });
+    } catch (error) {
+      console.error("Error in courses debug/list:", error);
+      res.status(500).json({ message: error.message, stack: error.stack });
+    }
+  });
 
   const createCourse = async (req, res) => {
     const newCourse = await dao.createCourse(req.body);
@@ -14,8 +66,14 @@ export default function CourseRoutes(app, db) {
 
 
   const findAllCourses = async (req, res) => {
-    const courses = await dao.findAllCourses();
-    res.send(courses);
+    try {
+      const courses = await dao.findAllCourses();
+      console.log("findAllCourses returning:", courses.length, "courses");
+      res.json(courses);
+    } catch (error) {
+      console.error("Error in findAllCourses route:", error);
+      res.status(500).json({ message: error.message || "Unable to fetch courses" });
+    }
   }
 
   const deleteCourse = async (req, res) => {

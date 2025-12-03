@@ -3,30 +3,55 @@ import model from "./model.js";
 
 export default function AssignmentsDao() {
   const findAssignmentsForCourse = async (courseId) => {
-    const assignments = await model.find({ course: courseId });
-    return assignments.map((a) => a.toObject());
+    try {
+      const count = await model.countDocuments({ course: courseId });
+      console.log(`Total assignments for course ${courseId} (countDocuments):`, count);
+      
+      const assignments = await model.find({ course: courseId }).lean();
+      console.log(`Assignments found for course ${courseId} (find):`, assignments.length);
+      
+      return assignments; // Already plain objects from lean()
+    } catch (error) {
+      console.error("Error in findAssignmentsForCourse:", error);
+      throw error;
+    }
   };
 
   const findAssignmentById = async (assignmentId) => {
-    const assignment = await model.findById(assignmentId);
-    return assignment ? assignment.toObject() : null;
+    try {
+      const assignment = await model.findById(assignmentId).lean();
+      return assignment; // Already plain object from lean()
+    } catch (error) {
+      console.error("Error in findAssignmentById:", error);
+      throw error;
+    }
   };
 
   const createAssignment = async (courseId, assignment) => {
-    const newAssignment = {
-      _id: uuidv4(),
-      course: courseId,
-      availLabel: "Multiple Modules",
-      ...assignment,
-    };
-    const created = await model.create(newAssignment);
-    return created.toObject();
+    try {
+      const newAssignment = {
+        _id: uuidv4(),
+        course: courseId,
+        availLabel: "Multiple Modules",
+        ...assignment,
+      };
+      const created = await model.create(newAssignment);
+      return created.toObject();
+    } catch (error) {
+      console.error("Error in createAssignment:", error);
+      throw error;
+    }
   };
 
   const updateAssignment = async (assignmentId, assignmentUpdates) => {
-    await model.updateOne({ _id: assignmentId }, { $set: assignmentUpdates });
-    const updated = await model.findById(assignmentId);
-    return updated ? updated.toObject() : null;
+    try {
+      await model.updateOne({ _id: assignmentId }, { $set: assignmentUpdates });
+      const updated = await model.findById(assignmentId).lean();
+      return updated; // Already plain object from lean()
+    } catch (error) {
+      console.error("Error in updateAssignment:", error);
+      throw error;
+    }
   };
 
   const deleteAssignment = async (assignmentId) => {

@@ -10,9 +10,14 @@ export default function UsersDao() {
   
 
   const updateUser = async (userId, user) => {
-    await model.updateOne({ _id: userId }, { $set: user });
-    const updated = await model.findById(userId);
-    return updated ? updated.toObject() : null;
+    try {
+      await model.updateOne({ _id: userId }, { $set: user });
+      const updated = await model.findById(userId).lean();
+      return updated; // Already plain object from lean()
+    } catch (error) {
+      console.error("Error in updateUser:", error);
+      throw error;
+    }
   };
 
   const findAllUsers = async () => {
@@ -52,8 +57,13 @@ export default function UsersDao() {
   };
 
   const findUserById = async (userId) => {
-    const user = await model.findById(userId);
-    return user ? user.toObject() : null;
+    try {
+      const user = await model.findById(userId).lean();
+      return user; // Already plain object from lean()
+    } catch (error) {
+      console.error("Error in findUserById:", error);
+      throw error;
+    }
   };
 
 
@@ -125,21 +135,36 @@ export default function UsersDao() {
   };
 
   const deleteUser = async (userId) => {
-    const deleted = await model.findByIdAndDelete(userId);
-    return deleted ? deleted.toObject() : null;
+    try {
+      const deleted = await model.findByIdAndDelete(userId).lean();
+      return deleted; // Already plain object from lean()
+    } catch (error) {
+      console.error("Error in deleteUser:", error);
+      throw error;
+    }
   };
 
   const findUsersByRole = async (role) => {
-    const users = await model.find({ role: role });
-    return users.map((u) => u.toObject());
+    try {
+      const users = await model.find({ role: role }).lean();
+      return users; // Already plain objects from lean()
+    } catch (error) {
+      console.error("Error in findUsersByRole:", error);
+      throw error;
+    }
   };
 
   const findUsersByPartialName = async (partialName) => {
-    const regex = new RegExp(partialName, "i"); // 'i' makes it case-insensitive
-    const users = await model.find({
-      $or: [{ firstName: { $regex: regex } }, { lastName: { $regex: regex } }],
-    });
-    return users.map((u) => u.toObject());
+    try {
+      const regex = new RegExp(partialName, "i"); // 'i' makes it case-insensitive
+      const users = await model.find({
+        $or: [{ firstName: { $regex: regex } }, { lastName: { $regex: regex } }],
+      }).lean();
+      return users; // Already plain objects from lean()
+    } catch (error) {
+      console.error("Error in findUsersByPartialName:", error);
+      throw error;
+    }
   };
   
 

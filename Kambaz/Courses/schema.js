@@ -8,6 +8,10 @@ const courseSchema = new mongoose.Schema({
    description: String,
    modules: [moduleSchema]
  },
- { collection: "courses" }
+ { 
+   collection: "courses",
+   strict: false, // Allow fields not in schema (for old courses that might have extra fields)
+   versionKey: false // Disable __v field
+ }
 );
 export default courseSchema;
