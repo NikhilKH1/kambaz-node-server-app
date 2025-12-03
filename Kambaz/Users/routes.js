@@ -293,15 +293,32 @@ export default function UserRoutes(app, db) {
   // Debug endpoint to check users (remove in production)
   app.get("/api/users/debug/list", async (req, res) => {
     try {
+      // Get connection info
+      const db = UserModel.db;
+      const dbName = db?.databaseName;
+      const collectionName = UserModel.collection.name;
+      
       // Direct MongoDB query to verify
-      const directCount = await UserModel.countDocuments();
-      const directUsers = await UserModel.find().limit(20);
+      const directCount = await UserModel.countDocuments({});
+      const directUsers = await UserModel.find({}).limit(20).lean();
+      
+      // Also try raw MongoDB collection query
+      const rawCollection = db?.collection("users");
+      let rawCount = 0;
+      let rawUsers = [];
+      if (rawCollection) {
+        rawCount = await rawCollection.countDocuments({});
+        rawUsers = await rawCollection.find({}).limit(20).toArray();
+      }
       
       console.log("=== DEBUG LIST ENDPOINT ===");
-      console.log("Direct MongoDB count:", directCount);
+      console.log("Database name:", dbName);
+      console.log("Collection name:", collectionName);
+      console.log("Connection string (sanitized):", process.env.DATABASE_CONNECTION_STRING ? "Set" : "Not set");
+      console.log("Direct MongoDB count (UserModel):", directCount);
       console.log("Direct MongoDB find result:", directUsers.length);
-      console.log("Database name:", UserModel.db?.databaseName);
-      console.log("Collection name:", UserModel.collection.name);
+      console.log("Raw collection count:", rawCount);
+      console.log("Raw collection find result:", rawUsers.length);
       
       const users = await dao.findAllUsers();
       
@@ -317,11 +334,25 @@ export default function UserRoutes(app, db) {
         email: u.email
       }));
       
+      // Also show raw users for comparison
+      const safeRawUsers = rawUsers.map(u => ({
+        _id: u._id,
+        _idType: typeof u._id,
+        username: u.username,
+        passwordLength: u.password ? u.password.length : 0,
+        role: u.role
+      }));
+      
       res.json({ 
+        database: dbName,
+        collection: collectionName,
         daoCount: users.length,
         directMongoCount: directCount,
         directMongoFindCount: directUsers.length,
+        rawCollectionCount: rawCount,
+        rawCollectionFindCount: rawUsers.length,
         users: safeUsers,
+        rawUsers: safeRawUsers,
         message: "Use /api/users/debug/test/:username to test specific username lookup"
       });
     } catch (error) {
