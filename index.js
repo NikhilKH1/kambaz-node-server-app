@@ -12,6 +12,7 @@ import "dotenv/config";
 import session from "express-session";
 import usersData from "./Kambaz/Database/users.js";
 import coursesData from "./Kambaz/Database/courses.js";
+import modulesData from "./Kambaz/Database/modules.js";
 import assignmentsData from "./Kambaz/Database/assignments.js";
 import enrollmentsData from "./Kambaz/Database/enrollments.js";
 import UserModel from "./Kambaz/Users/model.js";
@@ -98,17 +99,37 @@ mongoose.connect(CONNECTION_STRING).then(async () => {
     }
   }
   
+  // Group modules by course
+  const modulesByCourse = {};
+  modulesData.forEach(module => {
+    const courseId = module.course;
+    if (courseId) {
+      if (!modulesByCourse[courseId]) {
+        modulesByCourse[courseId] = [];
+      }
+      // Remove the 'course' field from module before embedding (it's not part of the schema)
+      const { course, ...moduleData } = module;
+      modulesByCourse[courseId].push(moduleData);
+    }
+  });
+  
+  // Embed modules into courses
+  const coursesWithModules = coursesData.map(course => ({
+    ...course,
+    modules: modulesByCourse[course._id] || []
+  }));
+  
   const courseCount = await CourseModel.countDocuments();
   if (courseCount === 0) {
-    console.log("Seeding courses...");
-    await CourseModel.insertMany(coursesData);
-    console.log(`Seeded ${coursesData.length} courses`);
+    console.log("Seeding courses with modules...");
+    await CourseModel.insertMany(coursesWithModules);
+    console.log(`Seeded ${coursesWithModules.length} courses with modules`);
   } else {
     // Check for missing courses and insert them
     try {
       const existingCourseIds = await CourseModel.find().select('_id').lean();
       const existingIdSet = new Set(existingCourseIds.map(c => c._id));
-      const missingCourses = coursesData.filter(c => !existingIdSet.has(c._id));
+      const missingCourses = coursesWithModules.filter(c => !existingIdSet.has(c._id));
       
       if (missingCourses.length > 0) {
         console.log(`Found ${missingCourses.length} missing courses, inserting...`);
@@ -118,8 +139,26 @@ mongoose.connect(CONNECTION_STRING).then(async () => {
       } else {
         console.log(`All courses already exist (${courseCount} total)`);
       }
+      
+      // Update existing courses to include modules if they're missing
+      console.log("Updating existing courses with modules...");
+      for (const courseId in modulesByCourse) {
+        const course = await CourseModel.findById(courseId);
+        if (course) {
+          const existingModuleIds = new Set((course.modules || []).map(m => m._id));
+          const missingModules = modulesByCourse[courseId].filter(m => !existingModuleIds.has(m._id));
+          
+          if (missingModules.length > 0) {
+            await CourseModel.updateOne(
+              { _id: courseId },
+              { $push: { modules: { $each: missingModules } } }
+            );
+            console.log(`Added ${missingModules.length} modules to course ${courseId}`);
+          }
+        }
+      }
     } catch (error) {
-      console.error("Error inserting missing courses:", error);
+      console.error("Error inserting/updating courses:", error);
     }
   }
   
@@ -239,12 +278,30 @@ const seedDatabase = async (req, res) => {
       console.log(`Users already exist: ${userCount}`);
     }
     
+    // Group modules by course for seeding
+    const modulesByCourseForSeed = {};
+    modulesData.forEach(module => {
+      const courseId = module.course;
+      if (courseId) {
+        if (!modulesByCourseForSeed[courseId]) {
+          modulesByCourseForSeed[courseId] = [];
+        }
+        const { course, ...moduleData } = module;
+        modulesByCourseForSeed[courseId].push(moduleData);
+      }
+    });
+    
+    const coursesWithModulesForSeed = coursesData.map(course => ({
+      ...course,
+      modules: modulesByCourseForSeed[course._id] || []
+    }));
+    
     const courseCount = await CourseModel.countDocuments();
     if (courseCount === 0) {
       try {
-        await CourseModel.insertMany(coursesData);
-        results.courses = coursesData.length;
-        console.log(`Seeded ${coursesData.length} courses`);
+        await CourseModel.insertMany(coursesWithModulesForSeed);
+        results.courses = coursesWithModulesForSeed.length;
+        console.log(`Seeded ${coursesWithModulesForSeed.length} courses with modules`);
       } catch (error) {
         results.errors.push(`Courses: ${error.message}`);
         console.error("Error seeding courses:", error);
@@ -252,6 +309,27 @@ const seedDatabase = async (req, res) => {
     } else {
       results.courses = courseCount;
       console.log(`Courses already exist: ${courseCount}`);
+      
+      // Update existing courses to include modules
+      try {
+        for (const courseId in modulesByCourseForSeed) {
+          const course = await CourseModel.findById(courseId);
+          if (course) {
+            const existingModuleIds = new Set((course.modules || []).map(m => m._id));
+            const missingModules = modulesByCourseForSeed[courseId].filter(m => !existingModuleIds.has(m._id));
+            
+            if (missingModules.length > 0) {
+              await CourseModel.updateOne(
+                { _id: courseId },
+                { $push: { modules: { $each: missingModules } } }
+              );
+              console.log(`Added ${missingModules.length} modules to course ${courseId}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error updating courses with modules:", error);
+      }
     }
     
     const assignmentCount = await AssignmentModel.countDocuments();
@@ -334,8 +412,26 @@ const reseedDatabase = async (req, res) => {
     console.log("Cleared all collections");
     
 
+    // Group modules by course for reseed
+    const modulesByCourseForReseed = {};
+    modulesData.forEach(module => {
+      const courseId = module.course;
+      if (courseId) {
+        if (!modulesByCourseForReseed[courseId]) {
+          modulesByCourseForReseed[courseId] = [];
+        }
+        const { course, ...moduleData } = module;
+        modulesByCourseForReseed[courseId].push(moduleData);
+      }
+    });
+    
+    const coursesWithModulesForReseed = coursesData.map(course => ({
+      ...course,
+      modules: modulesByCourseForReseed[course._id] || []
+    }));
+    
     await UserModel.insertMany(usersData);
-    await CourseModel.insertMany(coursesData);
+    await CourseModel.insertMany(coursesWithModulesForReseed);
     await AssignmentModel.insertMany(assignmentsData);
     await EnrollmentModel.insertMany(enrollmentsData);
     

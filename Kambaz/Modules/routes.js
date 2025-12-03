@@ -3,9 +3,16 @@ export default function ModulesRoutes(app, db) {
   const dao = ModulesDao();
 
   const findModulesForCourse = async (req, res) => {
-    const { courseId } = req.params;
-    const modules = await dao.findModulesForCourse(courseId);
-    res.json(modules);
+    try {
+      const { courseId } = req.params;
+      console.log(`API: Finding modules for course ${courseId}`);
+      const modules = await dao.findModulesForCourse(courseId);
+      console.log(`API: Returning ${modules.length} modules for course ${courseId}`);
+      res.json(modules);
+    } catch (error) {
+      console.error("Error in findModulesForCourse route:", error);
+      res.status(500).json({ message: error.message || "Unable to fetch modules" });
+    }
   };
 
   const createModuleForCourse = async (req, res) => {

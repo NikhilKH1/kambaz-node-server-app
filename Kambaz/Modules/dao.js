@@ -3,17 +3,24 @@ import model from "../Courses/model.js";
 
 export default function ModulesDao() {
   const updateModule = async (courseId, moduleId, moduleUpdates) => {
-    const course = await model.findById(courseId);
-    if (!course) {
-      return null;
+    try {
+      const course = await model.findById(courseId);
+      if (!course) {
+        console.log(`Course ${courseId} not found for module update`);
+        return null;
+      }
+      const module = course.modules.id(moduleId);
+      if (!module) {
+        console.log(`Module ${moduleId} not found in course ${courseId}`);
+        return null;
+      }
+      Object.assign(module, moduleUpdates);
+      await course.save();
+      return module.toObject();
+    } catch (error) {
+      console.error("Error in updateModule:", error);
+      throw error;
     }
-    const module = course.modules.id(moduleId);
-    if (!module) {
-      return null;
-    }
-    Object.assign(module, moduleUpdates);
-    await course.save();
-    return module.toObject();
   };
 
   const deleteModule = async (courseId, moduleId) => {
@@ -34,11 +41,35 @@ export default function ModulesDao() {
   };
 
   const findModulesForCourse = async (courseId) => {
-    const course = await model.findById(courseId);
-    if (!course) {
-      return [];
+    try {
+      console.log(`Finding modules for course: ${courseId}`);
+      
+      // Try with lean first for better performance
+      let course = await model.findById(courseId).lean();
+      
+      if (!course) {
+        console.log(`Course ${courseId} not found`);
+        return [];
+      }
+      
+      console.log(`Course found: ${course.name}, modules count: ${course.modules?.length || 0}`);
+      
+      // If using lean(), modules are already plain objects
+      if (course.modules && Array.isArray(course.modules)) {
+        return course.modules; // Already plain objects from lean()
+      }
+      
+      // Fallback: if lean() doesn't work with subdocuments, use regular query
+      course = await model.findById(courseId);
+      if (!course) {
+        return [];
+      }
+      
+      return course.modules ? course.modules.map((m) => m.toObject()) : [];
+    } catch (error) {
+      console.error("Error in findModulesForCourse:", error);
+      throw error;
     }
-    return course.modules.map((m) => m.toObject());
   };
 
   return {
