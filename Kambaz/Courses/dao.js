@@ -35,28 +35,48 @@ export default function CoursesDao() {
   };
 
   const findCoursesForEnrolledUser = async (userId) => {
-    const enrollments = await EnrollmentsModel.find({ user: userId });
-    const courseIds = enrollments.map((e) => e.course);
-    const courses = await model.find({ _id: { $in: courseIds } });
-    return courses.map((c) => c.toObject());
+    try {
+      const enrollments = await EnrollmentsModel.find({ user: userId }).lean();
+      const courseIds = enrollments.map((e) => e.course);
+      const courses = await model.find({ _id: { $in: courseIds } }).lean();
+      return courses; // Already plain objects from lean()
+    } catch (error) {
+      console.error("Error in findCoursesForEnrolledUser:", error);
+      throw error;
+    }
   };
 
   const createCourse = async (course) => {
-    const newCourse = { ...course, _id: course._id || uuidv4() };
-    const created = await model.create(newCourse);
-    return created.toObject();
+    try {
+      const newCourse = { ...course, _id: course._id || uuidv4() };
+      const created = await model.create(newCourse);
+      return created.toObject();
+    } catch (error) {
+      console.error("Error in createCourse:", error);
+      throw error;
+    }
   };
 
   const deleteCourse = async (courseId) => {
-    await model.deleteOne({ _id: courseId });
-    await EnrollmentsModel.deleteMany({ course: courseId });
-    return true;
+    try {
+      await model.deleteOne({ _id: courseId });
+      await EnrollmentsModel.deleteMany({ course: courseId });
+      return true;
+    } catch (error) {
+      console.error("Error in deleteCourse:", error);
+      throw error;
+    }
   };
 
   const updateCourse = async (courseId, courseUpdates) => {
-    await model.updateOne({ _id: courseId }, { $set: courseUpdates });
-    const updated = await model.findById(courseId);
-    return updated ? updated.toObject() : null;
+    try {
+      await model.updateOne({ _id: courseId }, { $set: courseUpdates });
+      const updated = await model.findById(courseId).lean();
+      return updated; // Already plain object from lean()
+    } catch (error) {
+      console.error("Error in updateCourse:", error);
+      throw error;
+    }
   };
   
   return { findAllCourses, findCoursesForEnrolledUser, createCourse, deleteCourse, updateCourse };
