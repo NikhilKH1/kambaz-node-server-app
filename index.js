@@ -20,14 +20,82 @@ import AssignmentModel from "./Kambaz/Assignments/model.js";
 import EnrollmentModel from "./Kambaz/Enrollments/model.js";
 
 const CONNECTION_STRING = process.env.DATABASE_CONNECTION_STRING || "mongodb://127.0.0.1:27017/kambaz";
+
+// Extract database name from connection string
+const extractDatabaseName = (connectionString) => {
+  try {
+    // MongoDB connection strings: mongodb://host:port/database or mongodb+srv://user:pass@host/database
+    const match = connectionString.match(/\/([^?\/]+)(\?|$)/);
+    return match ? match[1] : "unknown";
+  } catch {
+    return "unknown";
+  }
+};
+
+const expectedDbName = extractDatabaseName(CONNECTION_STRING);
+
 mongoose.connect(CONNECTION_STRING).then(async () => {
-  console.log("Connected to MongoDB");
+  console.log("=== MONGODB CONNECTION INFO ===");
+  console.log("Connected to MongoDB successfully");
+  console.log("Connection string (sanitized):", CONNECTION_STRING.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'));
+  console.log("Expected database name (from connection string):", expectedDbName);
+  console.log("Actual database name (from connection):", mongoose.connection.db?.databaseName);
+  console.log("Connection state:", mongoose.connection.readyState);
+  
+  // List all databases in the cluster (if we have access)
+  try {
+    const adminDb = mongoose.connection.db.admin();
+    const dbList = await adminDb.listDatabases();
+    console.log("\n=== ALL DATABASES IN CLUSTER ===");
+    dbList.databases.forEach(db => {
+      const isCurrent = db.name === mongoose.connection.db?.databaseName;
+      console.log(`  ${isCurrent ? '→' : ' '} ${db.name} (${(db.sizeOnDisk / 1024 / 1024).toFixed(2)} MB)${isCurrent ? ' [CURRENT]' : ''}`);
+    });
+  } catch (err) {
+    console.log("(Cannot list all databases - may not have admin access)");
+  }
+  
+  // Verify connection by checking collections
+  const collections = await mongoose.connection.db.listCollections().toArray();
+  console.log("\n=== COLLECTIONS IN CURRENT DATABASE ===");
+  console.log("Available collections:", collections.map(c => c.name));
+  
+  // Check document counts for each collection
+  console.log("\n=== DOCUMENT COUNTS ===");
+  for (const collection of collections) {
+    try {
+      const count = await mongoose.connection.db.collection(collection.name).countDocuments();
+      console.log(`  ${collection.name}: ${count} documents`);
+    } catch (err) {
+      console.log(`  ${collection.name}: Error counting - ${err.message}`);
+    }
+  }
+  
+  console.log("=====================================\n");
   
   const userCount = await UserModel.countDocuments();
   if (userCount === 0) {
     console.log("Seeding users...");
     await UserModel.insertMany(usersData);
     console.log(`Seeded ${usersData.length} users`);
+  } else {
+    // Check for missing users and insert them
+    try {
+      const existingUsernames = await UserModel.find().select('username').lean();
+      const existingUsernameSet = new Set(existingUsernames.map(u => u.username));
+      const missingUsers = usersData.filter(u => !existingUsernameSet.has(u.username));
+      
+      if (missingUsers.length > 0) {
+        console.log(`Found ${missingUsers.length} missing users, inserting...`);
+        await UserModel.insertMany(missingUsers, { ordered: false });
+        const finalCount = await UserModel.countDocuments();
+        console.log(`Inserted ${missingUsers.length} missing users. Total: ${finalCount}`);
+      } else {
+        console.log(`All users already exist (${userCount} total)`);
+      }
+    } catch (error) {
+      console.error("Error inserting missing users:", error);
+    }
   }
   
   const courseCount = await CourseModel.countDocuments();
@@ -35,6 +103,24 @@ mongoose.connect(CONNECTION_STRING).then(async () => {
     console.log("Seeding courses...");
     await CourseModel.insertMany(coursesData);
     console.log(`Seeded ${coursesData.length} courses`);
+  } else {
+    // Check for missing courses and insert them
+    try {
+      const existingCourseIds = await CourseModel.find().select('_id').lean();
+      const existingIdSet = new Set(existingCourseIds.map(c => c._id));
+      const missingCourses = coursesData.filter(c => !existingIdSet.has(c._id));
+      
+      if (missingCourses.length > 0) {
+        console.log(`Found ${missingCourses.length} missing courses, inserting...`);
+        await CourseModel.insertMany(missingCourses, { ordered: false });
+        const finalCount = await CourseModel.countDocuments();
+        console.log(`Inserted ${missingCourses.length} missing courses. Total: ${finalCount}`);
+      } else {
+        console.log(`All courses already exist (${courseCount} total)`);
+      }
+    } catch (error) {
+      console.error("Error inserting missing courses:", error);
+    }
   }
   
   const assignmentCount = await AssignmentModel.countDocuments();
@@ -42,6 +128,24 @@ mongoose.connect(CONNECTION_STRING).then(async () => {
     console.log("Seeding assignments...");
     await AssignmentModel.insertMany(assignmentsData);
     console.log(`Seeded ${assignmentsData.length} assignments`);
+  } else {
+    // Check for missing assignments and insert them
+    try {
+      const existingAssignmentIds = await AssignmentModel.find().select('_id').lean();
+      const existingIdSet = new Set(existingAssignmentIds.map(a => a._id));
+      const missingAssignments = assignmentsData.filter(a => !existingIdSet.has(a._id));
+      
+      if (missingAssignments.length > 0) {
+        console.log(`Found ${missingAssignments.length} missing assignments, inserting...`);
+        await AssignmentModel.insertMany(missingAssignments, { ordered: false });
+        const finalCount = await AssignmentModel.countDocuments();
+        console.log(`Inserted ${missingAssignments.length} missing assignments. Total: ${finalCount}`);
+      } else {
+        console.log(`All assignments already exist (${assignmentCount} total)`);
+      }
+    } catch (error) {
+      console.error("Error inserting missing assignments:", error);
+    }
   }
   
   const enrollmentCount = await EnrollmentModel.countDocuments();
@@ -263,6 +367,58 @@ app.post("/api/reseed", reseedDatabase);
 
 app.get("/api/test", (req, res) => {
   res.json({ message: "Server is running", timestamp: new Date().toISOString() });
+});
+
+// Database info endpoint
+app.get("/api/db-info", async (req, res) => {
+  try {
+    const actualDbName = mongoose.connection.db?.databaseName;
+    const expectedDbName = extractDatabaseName(CONNECTION_STRING);
+    
+    // List all collections and their counts
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collectionCounts = {};
+    for (const collection of collections) {
+      try {
+        collectionCounts[collection.name] = await mongoose.connection.db.collection(collection.name).countDocuments();
+      } catch (err) {
+        collectionCounts[collection.name] = `Error: ${err.message}`;
+      }
+    }
+    
+    // Try to list all databases
+    let allDatabases = [];
+    try {
+      const adminDb = mongoose.connection.db.admin();
+      const dbList = await adminDb.listDatabases();
+      allDatabases = dbList.databases.map(db => ({
+        name: db.name,
+        sizeMB: (db.sizeOnDisk / 1024 / 1024).toFixed(2),
+        isCurrent: db.name === actualDbName
+      }));
+    } catch (err) {
+      // No admin access
+    }
+    
+    res.json({
+      connectionState: mongoose.connection.readyState,
+      databaseInfo: {
+        expected: expectedDbName,
+        actual: actualDbName,
+        match: expectedDbName === actualDbName,
+        warning: expectedDbName !== actualDbName ? "⚠️ Database name mismatch! Check your connection string." : null
+      },
+      allDatabases: allDatabases,
+      collections: collectionCounts,
+      connectionString: CONNECTION_STRING ? "Set (hidden)" : "Not set - using default",
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error.message,
+      connectionState: mongoose.connection.readyState
+    });
+  }
 });
 
 Lab5(app)
