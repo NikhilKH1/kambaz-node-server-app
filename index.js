@@ -14,14 +14,69 @@ import EnrollmentsRoutes from "./Kambaz/Enrollments/routes.js";
 import UserModel from "./Kambaz/Users/model.js";
 const app = express();
 
+// Log environment on startup
+console.log("=== SERVER STARTUP ===");
+console.log("NODE_ENV:", process.env.NODE_ENV || "not set");
+console.log("PORT:", process.env.PORT || "4000");
+console.log("SERVER_ENV:", process.env.SERVER_ENV || "not set");
+console.log("DATABASE_CONNECTION_STRING:", process.env.DATABASE_CONNECTION_STRING ? "Set" : "Not set");
+console.log("SESSION_SECRET:", process.env.SESSION_SECRET ? "Set" : "Not set (using default)");
+console.log("CLIENT_URL:", process.env.CLIENT_URL || "Not set (using defaults)");
+console.log("=====================");
+
 const CONNECTION_STRING = process.env.DATABASE_CONNECTION_STRING || "mongodb://127.0.0.1:27017/kambaz";
-mongoose.connect(CONNECTION_STRING)
+
+// MongoDB connection options
+const mongooseOptions = {
+  // Remove deprecated options that might cause issues
+};
+
+mongoose.connect(CONNECTION_STRING, mongooseOptions)
   .then(() => {
-    console.log("Connected to MongoDB");
+    console.log("Connected to MongoDB successfully");
+    console.log("Database:", mongoose.connection.db?.databaseName);
+    console.log("Connection state:", mongoose.connection.readyState);
+    console.log("Connection string (sanitized):", CONNECTION_STRING.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'));
+    
+    // Verify connection by checking collections
+    mongoose.connection.db.listCollections().toArray()
+      .then(collections => {
+        console.log("Available collections:", collections.map(c => c.name));
+        const usersCollection = collections.find(c => c.name === "users");
+        if (usersCollection) {
+          console.log("Users collection found:", usersCollection.name);
+        } else {
+          console.warn("⚠️ Users collection not found in database!");
+        }
+      })
+      .catch(err => console.error("Error listing collections:", err));
   })
   .catch((error) => {
     console.error("MongoDB connection error:", error);
+    console.error("Connection string:", CONNECTION_STRING.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')); // Hide credentials in logs
   });
+
+// Handle connection events
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('MongoDB reconnected');
+});
+
+// Detect production environment (Render sets PORT, or explicit NODE_ENV)
+// Must be defined BEFORE it's used in CORS and session config
+const isProduction = process.env.NODE_ENV === "production" || 
+                     !!process.env.PORT || 
+                     process.env.SERVER_ENV !== "development";
+
+console.log("Production mode:", isProduction);
+
 // Trust proxy - MUST be set BEFORE session middleware (important for Render.com)
 app.set("trust proxy", 1);
 
@@ -38,11 +93,11 @@ app.use(
         return callback(null, true);
       }
       // In development, allow all localhost origins
-      if (process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost:")) {
+      if (!isProduction && origin.startsWith("http://localhost:")) {
         return callback(null, true);
       }
-      // In production, allow all Vercel preview URLs
-      if (process.env.NODE_ENV === "production" && origin.includes(".vercel.app")) {
+      // In production, allow all Vercel preview URLs (including custom domains)
+      if (isProduction && (origin.includes(".vercel.app") || origin.includes("vercel.app"))) {
         console.log("CORS: Allowing Vercel origin:", origin);
         return callback(null, true);
       }
@@ -66,7 +121,7 @@ const sessionOptions = {
 };
 
 // Production session configuration for cross-domain cookies
-if (process.env.NODE_ENV === "production" || process.env.SERVER_ENV !== "development") {
+if (isProduction) {
   sessionOptions.proxy = true; // Trust proxy (important for Render)
   sessionOptions.cookie = {
     sameSite: "none", // Required for cross-domain cookies
@@ -77,6 +132,7 @@ if (process.env.NODE_ENV === "production" || process.env.SERVER_ENV !== "develop
     path: "/", // Ensure cookie is available for all paths
   };
   sessionOptions.resave = true; // Force save session even if not modified (for Render)
+  console.log("Session configured for production (cross-domain cookies)");
 } else {
   // Development: less strict settings
   sessionOptions.cookie = {
@@ -84,6 +140,7 @@ if (process.env.NODE_ENV === "production" || process.env.SERVER_ENV !== "develop
     maxAge: 24 * 60 * 60 * 1000,
     path: "/",
   };
+  console.log("Session configured for development");
 }
 
 app.use(session(sessionOptions));
@@ -97,10 +154,18 @@ app.get("/api/test-connection", (req, res) => {
     status: "ok",
     message: "Backend is reachable",
     origin: origin || "no origin",
+    environment: isProduction ? "production" : "development",
     timestamp: new Date().toISOString(),
     corsHeaders: {
       "Access-Control-Allow-Origin": res.getHeader("Access-Control-Allow-Origin") || "not set",
       "Access-Control-Allow-Credentials": res.getHeader("Access-Control-Allow-Credentials") || "not set"
+    },
+    config: {
+      nodeEnv: process.env.NODE_ENV || "not set",
+      hasPort: !!process.env.PORT,
+      hasSessionSecret: !!process.env.SESSION_SECRET,
+      hasDatabase: !!process.env.DATABASE_CONNECTION_STRING,
+      hasClientUrl: !!process.env.CLIENT_URL
     }
   });
 });
@@ -157,8 +222,8 @@ app.use((err, req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
     const isAllowed = 
-      process.env.NODE_ENV !== "production" && origin.startsWith("http://localhost:") ||
-      process.env.NODE_ENV === "production" && origin.includes(".vercel.app") ||
+      (!isProduction && origin.startsWith("http://localhost:")) ||
+      (isProduction && origin.includes(".vercel.app")) ||
       allowedOrigins.includes(origin);
     
     if (isAllowed) {
@@ -173,4 +238,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(process.env.PORT || 4000)
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${isProduction ? "PRODUCTION" : "DEVELOPMENT"}`);
+  console.log(`CORS: Allowing Vercel origins: ${isProduction}`);
+});

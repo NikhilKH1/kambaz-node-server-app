@@ -17,6 +17,10 @@ const userSchema = new mongoose.Schema({
     lastActivity: Date,
     totalActivity: String,
   },
-  { collection: "users" }
+  { 
+    collection: "users",
+    strict: false, // Allow fields not in schema (for old users that might have extra fields)
+    versionKey: false // Disable __v field
+  }
 );
 export default userSchema;
