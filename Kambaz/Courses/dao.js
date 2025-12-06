@@ -48,7 +48,10 @@ export default function CoursesDao() {
 
   const createCourse = async (course) => {
     try {
-      const newCourse = { ...course, _id: course._id || uuidv4() };
+      // Always generate a new UUID for new courses (ignore _id if it's "0" or empty)
+      const courseId = (course._id && course._id !== "0") ? course._id : uuidv4();
+      const { _id, ...courseData } = course; // Remove _id from course data
+      const newCourse = { ...courseData, _id: courseId }; // Use the generated/validated _id
       const created = await model.create(newCourse);
       return created.toObject();
     } catch (error) {
