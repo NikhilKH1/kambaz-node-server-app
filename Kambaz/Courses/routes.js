@@ -57,10 +57,17 @@ export default function CourseRoutes(app, db) {
   });
 
   const createCourse = async (req, res) => {
-    const newCourse = await dao.createCourse(req.body);
-    const currentUser = req.session["currentUser"];
-    enrollmentsDao.enrollUserInCourse(currentUser._id, newCourse._id);
-    res.json(newCourse);
+    try {
+      const newCourse = await dao.createCourse(req.body);
+      const currentUser = req.session["currentUser"];
+      if (currentUser && currentUser._id) {
+        await enrollmentsDao.enrollUserInCourse(currentUser._id, newCourse._id);
+      }
+      res.json(newCourse);
+    } catch (error) {
+      console.error("Error in createCourse:", error);
+      res.status(500).json({ message: error.message || "Unable to create course" });
+    }
   };
   app.post("/api/users/current/courses", createCourse);
 
